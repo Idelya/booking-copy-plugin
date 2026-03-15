@@ -330,6 +330,7 @@
     const link = localization.getShortShareLink() || localization.getCanonicalLink() || window.location.href;
     const apartmentLocalization = localization.getApartmentLocalization();
     const requiredGuests = localization.parseRequiredGuests();
+    console.log("requiredGuests", requiredGuests);
     const lowestPrice = rooms.findLowestMatchingPrice(requiredGuests);
     const reviewScore = getReviewScore();
     const parkingInfo = extractParkingInfo();
@@ -343,6 +344,7 @@
       parkingInfo,
       laundryInfo,
       price: lowestPrice.priceText,
+      priceValue: lowestPrice.priceValue,
       bedsConfiguration: lowestPrice.bedsConfiguration,
       apartmentType: lowestPrice.apartmentType,
       freeCancellation: !!lowestPrice.freeCancellation,
@@ -357,7 +359,15 @@
   function toExcelRow(offer, formulaLocalePreference) {
     const safeName = (offer.name || "").replace(/"/g, '""');
     const safeLink = (offer.link || "").replace(/"/g, '""');
-    const safePrice = (offer.price || "").replace(/\s+/g, " ").trim();
+    const extractNumericPrice = (value) => {
+      if (Number.isFinite(value)) {
+        return String(Math.round(value));
+      }
+      const raw = String(value || "");
+      const digits = raw.replace(/[^\d]/g, "");
+      return digits || "";
+    };
+    const safePrice = extractNumericPrice(offer.priceValue ?? offer.price);
     const safeBedsConfiguration = (offer.bedsConfiguration || "").replace(/\s+/g, " ").trim();
     const safeApartmentType = (offer.apartmentType || "").replace(/\s+/g, " ").trim();
     const safeApartmentLocalization = (offer.apartmentLocalization || "").replace(/\s+/g, " ").trim();

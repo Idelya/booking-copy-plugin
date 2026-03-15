@@ -26,6 +26,28 @@
         return 0;
       }
     };
+    const readCapacityFromOccupancyIcons = (rootNode) => {
+      if (!rootNode) {
+        return 0;
+      }
+      const occupancyRoot = rootNode.querySelector(".c-occupancy-icons__adults");
+      if (!occupancyRoot) {
+        return 0;
+      }
+
+      const multiplierNode = occupancyRoot.querySelector(".c-occupancy-icons__multiplier-number");
+      const multiplierValue = parsePositiveInt(multiplierNode ? multiplierNode.textContent : "");
+      if (multiplierValue > 0) {
+        return multiplierValue;
+      }
+
+      const iconCount = occupancyRoot.querySelectorAll("i.bicon-occupancy").length;
+      if (iconCount > 0) {
+        return iconCount;
+      }
+
+      return 0;
+    };
 
     if (!node) {
       return 0;
@@ -35,6 +57,10 @@
     const rowCapacity = readCapacityFromFltrs(rowNode);
     if (rowCapacity > 0) {
       return rowCapacity;
+    }
+    const occupancyCapacity = readCapacityFromOccupancyIcons(rowNode || node);
+    if (occupancyCapacity > 0) {
+      return occupancyCapacity;
     }
 
     const attributeNames = [
@@ -155,11 +181,24 @@
     const normalizeText = (value) => (value || "").replace(/\s+/g, " ").trim();
     const rowNode = node.closest("tr[data-block-id]") || node.closest("tr");
     if (rowNode) {
-      const roundedPrice = parsePositiveInt(rowNode.getAttribute("data-hotel-rounded-price"));
-      if (roundedPrice > 0) {
-        const rowText = normalizeText(rowNode.textContent);
-        const currency = detectCurrencyToken(rowText);
-        return currency ? `${roundedPrice} ${currency}` : String(roundedPrice);
+      const roomSelect = rowNode.querySelector('select[data-testid="select-room-trigger"]');
+      if (roomSelect) {
+        const oneRoomOption = Array.from(roomSelect.options).find((option) => parsePositiveInt(option.value) === 1);
+        const firstPaidOption = oneRoomOption || Array.from(roomSelect.options).find((option) => parsePositiveInt(option.value) > 0);
+        if (firstPaidOption) {
+          const optionText = normalizeText(firstPaidOption.textContent || "");
+          const bracketMatch = optionText.match(/\(([^)]+)\)/);
+          const optionPriceText = normalizeText(bracketMatch ? bracketMatch[1] : optionText);
+          if (extractPriceValue(optionPriceText) !== null) {
+            return optionPriceText;
+          }
+        }
+      }
+
+      const currentPriceNode = rowNode.querySelector(".bui-price-display__value .prco-valign-middle-helper");
+      const currentPriceText = normalizeText(currentPriceNode ? currentPriceNode.textContent : "");
+      if (extractPriceValue(currentPriceText) !== null) {
+        return currentPriceText;
       }
     }
 
@@ -185,6 +224,15 @@
       }
     }
 
+    if (rowNode) {
+      const roundedPrice = parsePositiveInt(rowNode.getAttribute("data-hotel-rounded-price"));
+      if (roundedPrice > 0) {
+        const rowText = normalizeText(rowNode.textContent);
+        const currency = detectCurrencyToken(rowText);
+        return currency ? `${roundedPrice} ${currency}` : String(roundedPrice);
+      }
+    }
+
     const rawText = node.textContent ? node.textContent.replace(/\s+/g, " ").trim() : "";
     const value = extractPriceValue(rawText);
     if (value === null) {
@@ -197,6 +245,7 @@
     return String(value || "")
       .replace(/\u00a0/g, " ")
       .toLowerCase()
+      .replace(/ł/g, "l")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/\s+/g, " ")
@@ -211,7 +260,9 @@
 
     const freePatterns = [
       /free cancellation/i,
+      /free[_\s-]?cancellation/i,
       /bezplatn(?:e|y|a)\s+odwolan/i,
+      /odwolaj\s+bez\s+oplat/i,
       /moz(?:esz|na)\s+bezplatnie\s+odwolac/i,
       /w\spelni\s+refundowaln/i,
       /fully\s+refundable/i
@@ -451,102 +502,32 @@
         ? rowNode.querySelector("th[scope='row']")
         : null;
 
-    const parseBedLine = (line) => {
-      const text = line ? line.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim() : "";
-      if (!text) {
-        return "";
+    const normalizeText = (value) => String(value || "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+    const bedLines = [];
+    const seen = new Set();
+    const registerBedLine = (line) => {
+      const normalized = normalizeText(line);
+      if (!normalized || seen.has(normalized)) {
+        return;
       }
-      return text;
+      seen.add(normalized);
+      bedLines.push(normalized);
     };
-
-    const allCandidates = [];
-    const candidateIndexByCanonical = new Map();
-    const seenRaw = new Set();
-    const splitBedLabel = (line) => {
-      const normalized = String(line || "").replace(/\s+/g, " ").trim();
-      const separatorIndex = normalized.indexOf(":");
-      if (separatorIndex <= 0) {
-        return {
-          hasLabel: false,
-          canonical: normalized,
-          normalized
-        };
-      }
-      const label = normalized.slice(0, separatorIndex).trim();
-      const value = normalized.slice(separatorIndex + 1).trim();
-      if (!label || !value) {
-        return {
-          hasLabel: false,
-          canonical: normalized,
-          normalized
-        };
-      }
-      return {
-        hasLabel: true,
-        canonical: value,
-        normalized
-      };
-    };
-    const registerBedCandidate = (line) => {
-      if (!line) {
-        return;
-      }
-      if (seenRaw.has(line)) {
-        return;
-      }
-      seenRaw.add(line);
-      const parsed = splitBedLabel(line);
-      if (!parsed.canonical) {
-        return;
-      }
-      const existingIndex = candidateIndexByCanonical.get(parsed.canonical);
-      if (existingIndex === undefined) {
-        candidateIndexByCanonical.set(parsed.canonical, allCandidates.length);
-        allCandidates.push(parsed.normalized);
-        return;
-      }
-      const existingParsed = splitBedLabel(allCandidates[existingIndex]);
-      if (parsed.hasLabel && !existingParsed.hasLabel) {
-        allCandidates[existingIndex] = parsed.normalized;
-      }
-    };
-    const collectFromRoot = (rootNode) => {
-      if (!rootNode) {
-        return;
-      }
-      const bedContainers = rootNode.querySelectorAll(".hprt-roomtype-bed, .appartment-bed-types-wrapper, .room-config");
-      const rootsToScan = bedContainers.length ? Array.from(bedContainers) : [rootNode];
-      for (const root of rootsToScan) {
-        const nodes = root.querySelectorAll("li, span, [data-name-en]");
-        for (const candidate of nodes) {
-          const dataName = candidate.getAttribute("data-name-en");
-          const line = parseBedLine(dataName || candidate.textContent || "");
-          registerBedCandidate(line);
+    const roots = [roomTypeCell, rowNode, node].filter(Boolean);
+    for (const root of roots) {
+      const bedroomItems = root.querySelectorAll("li.bedroom_bed_type");
+      for (const bedroomItem of bedroomItems) {
+        const label = normalizeText((bedroomItem.querySelector("strong") || {}).textContent || "").replace(/:\s*$/, "");
+        const value = normalizeText((bedroomItem.querySelector("span") || {}).textContent || "");
+        if (label && value) {
+          registerBedLine(`${label}: ${value}`);
+          continue;
         }
-      }
-    };
-
-    collectFromRoot(roomTypeCell);
-    collectFromRoot(rowNode);
-    collectFromRoot(node);
-
-    if (!allCandidates.length && rowNode) {
-      const raw = rowNode.getAttribute("data-fltrs");
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          const bedCount = Array.isArray(parsed && parsed.bed_count) ? parsed.bed_count[0] : 0;
-          const count = parsePositiveInt(bedCount);
-          if (count > 0) {
-            registerBedCandidate(`${count} beds`);
-          }
-        } catch (_error) {
-          // Ignore malformed bed_count payloads.
-        }
+        registerBedLine(value || label);
       }
     }
 
-    return allCandidates.join(" + ");
+    return bedLines.join(" + ");
   }
 
   function extractApartmentType(node) {

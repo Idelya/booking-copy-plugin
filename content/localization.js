@@ -312,32 +312,154 @@
   }
 
   function parseRequiredGuests() {
-    const params = new URLSearchParams(window.location.search);
-    const groupAdults = parsePositiveInt(params.get("group_adults"));
-    const groupChildren = parsePositiveInt(params.get("group_children"));
-    const directAdults = parsePositiveInt(params.get("adults"));
-    const directChildren = parsePositiveInt(params.get("children"));
+    const parseFromParams = (params) => {
+      if (!params) {
+        return 0;
+      }
+      const groupAdults = parsePositiveInt(params.get("group_adults"));
+      const groupChildren = parsePositiveInt(params.get("group_children"));
+      const reqAdults = parsePositiveInt(params.get("req_adults"));
+      const reqChildren = parsePositiveInt(params.get("req_children"));
+      const directAdults = parsePositiveInt(params.get("adults"));
+      const directChildren = parsePositiveInt(params.get("children"));
 
-    let totalGuests = groupAdults + groupChildren;
-    if (!totalGuests) {
-      totalGuests = directAdults + directChildren;
+      let totalGuests = groupAdults + groupChildren;
+      if (!totalGuests) {
+        totalGuests = reqAdults + reqChildren;
+      }
+      if (!totalGuests) {
+        totalGuests = directAdults + directChildren;
+      }
+
+      if (!totalGuests) {
+        for (const [key, value] of params.entries()) {
+          if (!/^room\d+$/i.test(key) || !value) {
+            continue;
+          }
+          const decoded = (() => {
+            try {
+              return decodeURIComponent(value);
+            } catch (_error) {
+              return value;
+            }
+          })();
+          const parts = decoded.split(",").map((part) => part.trim()).filter(Boolean);
+          if (parts.length) {
+            totalGuests += parts.length;
+          }
+        }
+      }
+
+      return totalGuests;
+    };
+
+    const parseFromUrlString = (rawUrl) => {
+      if (!rawUrl) {
+        return 0;
+      }
+      const normalized = String(rawUrl)
+        .replace(/\\u0026/gi, "&")
+        .replace(/&amp;/gi, "&")
+        .replace(/;/g, "&");
+      const queryIndex = normalized.indexOf("?");
+      const query = queryIndex >= 0 ? normalized.slice(queryIndex + 1) : normalized;
+      return parseFromParams(new URLSearchParams(query));
+    };
+    const extractCandidateUrls = (value) => {
+      const normalized = String(value || "")
+        .replace(/\\u0026/gi, "&")
+        .replace(/&amp;/gi, "&");
+      const matches = normalized.match(/https?:\/\/[^"'\\\s]+|\/hotel\/[^"'\\\s]+/g) || [];
+      return matches
+        .map((match) => match.trim())
+        .filter((match) => /(group_adults|req_adults|adults=|room\d+=)/i.test(match));
+    };
+
+    const totalFromLocation = parseFromParams(new URLSearchParams(window.location.search));
+    if (totalFromLocation > 0) {
+      return totalFromLocation;
     }
 
-    if (!totalGuests) {
-      for (const [key, value] of params.entries()) {
-        if (!/^room\d+$/i.test(key) || !value) {
-          continue;
+    const fallbackSources = [];
+    fallbackSources.push(window.location.href || "");
+    const canonicalLink = document.querySelector('link[rel="canonical"]');
+    fallbackSources.push(canonicalLink ? canonicalLink.href : "");
+
+    const fallbackScriptNodes = document.querySelectorAll("script");
+    for (const scriptNode of fallbackScriptNodes) {
+      const scriptText = scriptNode.textContent || "";
+      if (!scriptText) {
+        continue;
+      }
+      if (!/(group_adults|req_adults|adults|room\d+=)/i.test(scriptText)) {
+        continue;
+      }
+      fallbackSources.push(scriptText);
+    }
+
+    for (const source of fallbackSources) {
+      const sourceString = String(source || "").trim();
+      if (!sourceString) {
+        continue;
+      }
+      if (sourceString.length <= 2000) {
+        const parsed = parseFromUrlString(sourceString);
+        if (parsed > 0) {
+          return parsed;
         }
-        const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
-        if (parts.length) {
-          totalGuests += parts.length;
+      }
+
+      const candidates = extractCandidateUrls(sourceString);
+      for (const candidate of candidates) {
+        const parsed = parseFromUrlString(candidate);
+        if (parsed > 0) {
+          return parsed;
         }
       }
     }
 
-    const resolvedGuests = totalGuests > 0 ? totalGuests : 1;
-    
-    return resolvedGuests;
+    const recommendationSelectors = [
+      ".hp-rt-group_recommendation",
+      '[data-testid*="group-recommendation"]',
+      '[data-testid*="occupancy"]',
+      '[aria-label*="doros" i]',
+      '[aria-label*="adults" i]'
+    ];
+    for (const selector of recommendationSelectors) {
+      const nodes = document.querySelectorAll(selector);
+      for (const node of nodes) {
+        const text = String(node.textContent || node.getAttribute("aria-label") || "")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!text) {
+          continue;
+        }
+        if (!/(polecan|recommended|dorosl|adults?|gosc|gości|persons?)/i.test(text)) {
+          continue;
+        }
+        const parsed = parsePositiveInt(text.match(/\d+/) ? text.match(/\d+/)[0] : "");
+        if (parsed > 0) {
+          return parsed;
+        }
+      }
+    }
+
+    const adultsScriptNodes = document.querySelectorAll("script");
+    for (const scriptNode of adultsScriptNodes) {
+      const raw = scriptNode.textContent || "";
+      if (!raw) {
+        continue;
+      }
+      const reqMatch = raw.match(/["'](?:req_adults|group_adults|adults)["']\s*[:=]\s*["']?(\d{1,2})/i);
+      if (reqMatch && reqMatch[1]) {
+        const parsed = parsePositiveInt(reqMatch[1]);
+        if (parsed > 0) {
+          return parsed;
+        }
+      }
+    }
+
+    return 1;
   }
 
   namespace.localization = Object.assign({}, namespace.localization, {
