@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Booking.com Offer Copy for Excel",
+  "version": "1.0.0",
+  "description": "Copies Booking.com offer name, link and address in Excel-friendly format.",
+  "permissions": [
+    "clipboardWrite",
+    "storage"
+  ],
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.booking.com/hotel/*",
+        "https://www.booking.com/Share-*",
+        "https://www.booking.com/*"
+      ],
+      "js": [
+        "content/core.js",
+        "content/localization.js",
+        "content/rooms.js",
+        "content/offer.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

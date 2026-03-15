@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Booking Copy Plugin - Options</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f5f7fb;
+        color: #1f2937;
+      }
+
+      .container {
+        max-width: 680px;
+        margin: 24px auto;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        padding: 20px;
+      }
+
+      h1 {
+        margin: 0 0 14px;
+        font-size: 20px;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      label {
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      select,
+      button {
+        height: 40px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 14px;
+      }
+
+      select {
+        padding: 0 10px;
+      }
+
+      button {
+        margin-top: 16px;
+        border: 0;
+        background: #0071c2;
+        color: #ffffff;
+        padding: 0 16px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      #status {
+        margin-top: 12px;
+        font-size: 13px;
+        min-height: 20px;
+        color: #0f766e;
+      }
+
+      .hint {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #4b5563;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Booking Copy Plugin - Opcje</h1>
+      <div class="field">
+        <label for="formulaLocale">Jezyk formuly Excel</label>
+        <select id="formulaLocale">
+          <option value="auto">Auto (wg jezyka przegladarki)</option>
+          <option value="pl">Polski (HIPERŁĄCZE + ;)</option>
+          <option value="en">English (HYPERLINK + ,)</option>
+        </select>
+      </div>
+      <button id="saveButton" type="button">Zapisz</button>
+      <div id="status"></div>
+      <p class="hint">
+        Po zmianie odswiez karte Booking.com, aby nowe ustawienie zaczelo dzialac.
+      </p>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>
